@@ -10,7 +10,7 @@ from astropy import units as u
 
 from colossus.cosmology import cosmology
 from colossus.lss import mass_function
-cosmo = cosmology.setCosmology('planck18')
+cosmo = cosmology.setCosmology('planck15')
 
 
 
@@ -53,9 +53,14 @@ class halo:
 
 
         ### We also prepare the NFW and ns profiles for later integrals
-        self.x_lst = np.geomspace(1e-5, self.C_lst, 10000).T
+        self.x_lst = np.geomspace(1e-5, self.C_lst, 20000).T # This seems to be a reasonable resolution
         self.NFW_profiles = self.NFW_tilde(self.x_lst)
         self.ns_profiles = self.NS_tilde(self.x_lst, np.array([self.R_NFW_0_lst, self.R_ns_0_lst]))
+
+        ### And for plotting purposes
+        self.x_lst_plotting = np.geomspace(1e-15, self.C_lst, 10000).T
+        self.NFW_profiles_plotting = self.NFW_tilde(self.x_lst_plotting)
+        self.ns_profiles_plotting = self.NS_tilde(self.x_lst_plotting, np.array([self.R_NFW_0_lst, self.R_ns_0_lst]))
 
 
         ### The virial velocities and velocity dispersion of each halo
@@ -97,12 +102,12 @@ class halo:
 
     def N_ns(self, SHMR_params):
 
-        salpeter_prefac = 0.06 # If int phi(m)dm = 1, then salpeter_prefac = 0.06
+        salpeter_prefac = 0.17 # If int phi(m)mdm = 1, then salpeter_prefac = 0.17
         salpeter_power = -2.35
 
 
         NS_M_min = 8. # M_sun
-        NS_M_max = 100. # M_sun
+        NS_M_max = 20. # M_sun
 
         M_stellar = self.stellar_mass(SHMR_params)
         #M_NGC_4993 = 2.95*1e10 M_sun
@@ -111,17 +116,18 @@ class halo:
                             (NS_M_max**(salpeter_power + 1.) - NS_M_min**(salpeter_power + 1.))
 
 
-        t_0 = 3. #Gyr
-        tau = 0.1
+        #t_0 = 3. #Gyr
+        #tau = 0.1
 
-        t_life = 0.02 # Gyr
-        t_lst = np.linspace(0.1 - t_life, 10 - t_life, 100)
-        psi = self.SFH(t_lst, [t_0, tau])
+        #t_life = 0.02 # Gyr
+        #t_lst = np.linspace(0.1 - t_life, 10 - t_life, 100)
+        #psi = self.SFH(t_lst, [t_0, tau])
 
-        integral_2 = np.trapz(psi, t_lst)
+        #integral_2 = np.trapz(psi, t_lst)
 
-        N_ns = M_stellar*integral_1*integral_2
-        return {"N_ns":N_ns, "M_stellar":M_stellar, "SFH":psi}
+        N_ns = M_stellar*integral_1#*integral_2
+        return {"N_ns":N_ns, "M_stellar":M_stellar}
+        #, "SFH":psi
 
 
     def SFH(self, t_lst, SFH_params):
@@ -140,7 +146,7 @@ class halo:
 
     def stellar_mass(self, SHMR_params):
         ### --- Fitting function from appendix A of 1401.7329
-        ### --- M_halo in M_sun
+        ### --- M_halo in M_sun units
 
         epsilon, M_1, alpha, gamma, delta = SHMR_params
         f = lambda x: -np.log10(10**(alpha*x) + 1.) + delta*(np.log10(1. + np.exp(x))**gamma)/(1. + np.exp(10**(-x)))
@@ -153,7 +159,7 @@ class halo:
 
     def concentration(self):
         ### --- Fitting function from appendix C of 1601.02624
-        ### --- M_halo in M_sun/h
+        ### --- M_halo in M_sun/h units
 
         h = 0.7
         reference_mass = 1e10*h*u.Msun # in M_sun/h
@@ -175,17 +181,21 @@ class halo:
 
     def halo_properties(self):
 
-        halo_property_dictionary = {"Concentration":self.C_lst, "rho_NFW_0":self.rho_NFW_0_lst, "R_NFW_0":self.R_NFW_0_lst, "R_virial":self.R_vir_lst, \
-                            "N_ns":self.N_ns_lst, "rho_ns_0":self.rho_ns_0_lst,
-                            "x_lst":self.x_lst, "NFW_profiles":self.NFW_profiles, "ns_profiles":self.ns_profiles, "M_star":self.M_star_lst}
+        halo_property_dictionary = {"Concentration":self.C_lst,
+                                    "rho_NFW_0":self.rho_NFW_0_lst,
+                                    "R_NFW_0":self.R_NFW_0_lst,
+                                    "R_virial":self.R_vir_lst, \
+                                    "N_ns":self.N_ns_lst,
+                                    "rho_ns_0":self.rho_ns_0_lst,
+                                    "x_lst":self.x_lst,
+                                    "NFW_profiles":self.NFW_profiles,
+                                    "ns_profiles":self.ns_profiles,
+                                    "x_lst_plotting":self.x_lst_plotting,
+                                    "NFW_profiles_plotting":self.NFW_profiles_plotting,
+                                    "ns_profiles_plotting":self.ns_profiles_plotting,
+                                    "M_star":self.M_star_lst}
 
         return halo_property_dictionary
-
-
-
-
-
-
 
 
 class rates:
@@ -234,10 +244,8 @@ class rates:
         self.avg_vel_PBH_factor = avg_vel_PBH_factor.to(u.kpc**(-11./7.)/u.year**(-11./7.))
 
 
-
-
         ### The velocity independent part of <sigma v>
-        sigma_prefac = np.pi*(85.*np.pi/3.)**(2./7.)*2.**(4./7.)*const.G**2*M**2*eta**(2./7.)*const.c**(-10./7.)
+        sigma_prefac = np.pi*(85.*np.pi/3.)**(2./7.)*2.**(4./7.)*const.G**2*self.M**2*self.eta**(2./7.)*const.c**(-10./7.)
         sigma_prefac = sigma_prefac.to(u.kpc**(32/7)/u.year**(18/7))
 
         ### <sigma v> in units of kpc^3/yr
@@ -268,7 +276,7 @@ class rates:
 
         ### Analytical expression
         ### The C-dependent part
-        tmp_C_term = (1. - 1./(1. + self.halo.C_lst)**3)/self.halo.g(C_lst)**2
+        tmp_C_term = (1. - 1./(1. + self.halo.C_lst)**3)/self.halo.g(self.halo.C_lst)**2
 
         ### Other Halo dependent parts
         tmp_halo_term = self.halo.M_halo**2*self.avg_vel_PBH_factor/self.halo.R_NFW_0_lst**3
@@ -306,6 +314,7 @@ class rates:
         PBHPBH_rate_lst = np.zeros(len(M_c_lst))
         PBHNS_rate_lst = np.zeros(len(M_c_lst))
 
+        ### https://bdiemer.bitbucket.io/colossus/lss_mass_function.html
         halo_mass_function = mass_function.massFunction(self.halo.M_halo.value, 0., mdef = '200c', model = 'tinker08', q_out = 'dndlnM')
 
         for indx, val in enumerate(M_c_lst):
@@ -369,9 +378,15 @@ class spike:
         ratio = (self.R_schw/self.R_spike).to(u.m**0)
         length = len(ratio)
 
-        x_lst = np.geomspace(4.*ratio, np.ones(length), 10000).T
-        print(np.shape(x_lst))
-
+        ### For integration
+        x_lst = np.geomspace(4.*ratio, np.ones(length), 100000).T
         spike_profiles = (1. - 4.*ratio.reshape(length, 1)/x_lst)**3*(1./x_lst)**self.gamma_spike
 
-        return {"x_list":x_lst, "spike_profiles":spike_profiles}
+        ### For plotting
+        x_lst_plotting = np.geomspace(4.*ratio, 1e7*np.ones(length), 10000).T
+        spike_profiles_plotting = (1. - 4.*ratio.reshape(length, 1)/x_lst_plotting)**3*(1./x_lst_plotting)**self.gamma_spike
+
+        return {"x_list":x_lst,
+                "spike_profiles":spike_profiles,
+                "x_list_plotting":x_lst_plotting,
+                "spike_profiles_plotting":spike_profiles_plotting}
